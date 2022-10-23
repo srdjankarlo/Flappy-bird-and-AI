@@ -1,0 +1,9 @@
+digraph {
+	node [fontsize=9 height=0.2 shape=circle width=0.2]
+	"fly.y" [fillcolor=lightgray shape=box style=filled]
+	"fly.y - wasp.y" [fillcolor=lightgray shape=box style=filled]
+	"wasp.x_end - fly.x" [fillcolor=lightgray shape=box style=filled]
+	flap [fillcolor=lightblue style=filled]
+	"fly.y" -> flap [color=green penwidth=1.0988391571442675 style=solid]
+	"fly.y - wasp.y" -> flap [color=red penwidth=0.8041447415368642 style=solid]
+}

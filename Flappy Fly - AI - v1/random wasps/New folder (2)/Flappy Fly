@@ -1,0 +1,541 @@
+import pygame			#importovanje modula pygame
+import neat				#importovanje modula neat za neuralnu mrezu
+import time				#importovanje modula time za clock.tick() f-ju u main-u u while petlji
+import os				#importovanje modula os za pronalazenje putanje
+import random			#importovanje modula random za nasumicno odredjivanje brojeva (visine na ekranu za objekte)
+import keyboard			#importovanje modula keyboard za rad sa tastaturom
+import visualize		#modul za pravljenje grafika
+
+import pickle			#modul za export i import pobednicke mreze
+
+pygame.font.init()		#importovanje font modula iz modula pygame za font teksta na ekranu
+
+
+#dobra konvencija je da konstante pisemo velikim slovima
+WIN_WIDTH = 288			#sirina ekrana igrice
+WIN_HEIGHT = 512		#visina ekrana igrice
+GEN = -1				#varijabla koja nam pomaze da pratimo koja je generacija ptica i da se ispise na ekran
+
+#ucitavanje slika
+WASP_IMG = pygame.image.load(os.path.join("imgs", "wasp.png"))		#ucitali sliku ose
+FROG_IMG = pygame.image.load(os.path.join("imgs", "froggo.png"))	#ucitali sliku zabe
+FLY_IMGS = [pygame.image.load(os.path.join("imgs", "fly1.png")), pygame.image.load(os.path.join("imgs", "fly2.png")), pygame.image.load(os.path.join("imgs", "fly3.png"))]	#u FLY_IMGS ucitali slike musice
+BASE_IMG = pygame.image.load(os.path.join("imgs", "base.png"))		#ucitali sliku baze
+BG_IMG = pygame.image.load(os.path.join("imgs", "bg.png"))			#ucitali sliku pozadine
+
+STAT_FONT = pygame.font.SysFont("comicsans", 40)					#kreirali smo font comicsans sa velicinom 50
+
+#moguce pozicije za zabu
+LIST1_X = [450]	
+LIST1_Y = [370, 400, 420]
+#moguce pozicije za osu
+LIST2_X = [350]
+LIST2_Y	= [60, 100, 140, 180, 220, 260, 300]	#pre bio uklonio 350 vrednost...tad algoritam teze uci?...240/6=40
+#LIST2_Y = [60, 120, 180, 240, 300]		#SA OVIM POSTIGAO SKOR OD 2000....300-60=240/4=60
+lista = [0,1,2,3]
+#moguce visine skoka zabe
+LIST5_Y = [15, 20, 25, 30, 35]		#pre je bilo 9 i nije bilo 30 i 35
+
+
+
+#kreiramo klasu za musicu
+class Fly:
+	IMGS = FLY_IMGS					#u IMGS smo stavili niz slika za musicu, za lakse referenciranje slika musice kasnije u kodu
+	MAX_ROTATION = 25				#ugao rotacije za musicu
+	ROT_VEL = 20					#brzina rotacije musice
+	ANIMATION_TIME = 3				#koliko dugo se prikazuje pojedina slika po frejmu, ovaj parametar podesava koliko ptica brzo mase krilima
+
+	#konstruktor f-ja za klasu musice...ako ispred svake promenljive u f-ju stoji self to znaci da ce za svaki objekat biti drugacija vrednost tog parametra...ako nema self, svi objekti dele istu vrednost
+	def __init__(self, x, y):		#prima x i y pozicije musice a to su pocetne koordinate musice na ekranu: Fly(x,y)
+		self.x = x					#podesavanje x koordinate, self.iks = x
+		self.y = y					#podesavanje y koordinate, self.ipsilon = y
+		self.tilt = 0				#nagib slike musice, pocetni nagib kad se musica kreira je 0, slika je vodoravna
+		self.tick_count = 0			#promenljiva koja predstavlja vreme, koristice se u jednacini za odredjivanje pomeraja d (pomeraj je po y osi)
+		self.vel = 0				#brzina musice je na pocetku 0 jer ne pocne odmah da se krece (vel je brzina kretanja po y osi)
+		self.height = self.y		#promenljiva koja ce nam pomoci za pomeraj i nagib musice
+		self.img_count = 0			#promenljiva koja nam pomaze da odredimo koja se slika musice trenutno prikazuje na ekranu
+		self.img = self.IMGS[0]		#img je slika musice kad su joj krila postavljena na gore
+
+	#f-ja za mehaniku skakanja musice (pomeranje po y osi)
+	def jump(self):
+		self.vel = -5.5				#brzina skakanje (pomeraja) musice po y osi, u pygame modulu y osa raste na dole, pogleati sliku koncept2	
+		self.tick_count = 0			#kad skocimo, resetujemo tick_count jer moramo znati kad menjamo pravac
+		self.height = self.y		#promenljiva koja vodi racuna odakle je musica skocila, u height smestamo y poziciju sa koje smo skocili
+
+	#metodu move klase Fly pozivamo svaki put kada se musica pomera...ovo ce biti u while petlji u main-u...korisno je definisati kretanje u metodi klase nego u mainu za svaki objekat klase
+	def move(self):
+		self.tick_count += 1	#prosao je jedan frejm i uvecavamo vreme za 1, racunamo novu poziciju musice...imati na umu da se ovo resetuje svaki put kad musica skoci
+
+		d = self.vel*self.tick_count + 1.5*self.tick_count**2	#racunamo koliko se piksela pomeramo gore ili dole za trenutni frejm, pomeraj musice
+		#za pocetak t=1, d=-5.5+1.5*1=-4...t=2, d=-5.5*2+1.5*4=-5...t=3, d=-5.5*3+1.5*9=-3...t=4, d=2...t=5, d=10...t=6, d=21...t=7, d=35.....minus idemo na gore a plus idemo na dole
+		
+		#ogranicavanje pomeraja padanja (broj piksela po frejmu)
+		if d >= 16:											#ako je pomeraj veci od 16 piksela
+			d = 16											#ogranici kretanje na dole (padanje) na 16 piksela po frejmu
+
+		#fino podesavanje skoka musice
+		if d < 0:											#ako smo skocili (pomeraj d je manji od nule sto znaci da se pomeramo na gore)
+			d -= 2											#skoci jos malo vise
+
+		self.y = self.y + d 								#menjamo y koordinatu na osnovu d pomeraja
+
+		#podesavanje nagiba musice, slika koncept3
+		if d < 0 or self.y < self.height + 50:				#ako smo skocili ili ako smo iznad height+50
+			if self.tilt < self.MAX_ROTATION:				#ako je tilt manji od 25
+				self.tilt = self.MAX_ROTATION				#postavi tilt na 25...da izgleda kao da musica ide na gore
+		else:												#u suprotnom	(ako nismo skocili i ako smo ispod height+50)
+			if self.tilt > -90:								#ako je tilt veci od -90
+				self.tilt -= self.ROT_VEL					#umanji trenutni tilt za 20
+
+	#metoda draw klase Fly, crta objekat Fly na ekran/window, kao parametar prosledili win (ekran na kom se sve crta)
+	def draw(self, win):
+		self.img_count += 1									#svaki put kad se pozove f-ja draw, uvecava se ovaj parametar
+
+		#mahanje krila musice
+		if self.img_count < self.ANIMATION_TIME:			#ako je img_count manji od 3
+			self.img = self.IMGS[0]							#img ce biti slika musice sa krilima na gore
+		elif self.img_count < self.ANIMATION_TIME*2:		#ako je img_count manji od 6
+			self.img = self.IMGS[1]							#img ce biti slika musice sa vodoravnim krilima
+		elif self.img_count < self.ANIMATION_TIME*3:		#ako je img_count manji od 9
+			self.img = self.IMGS[2]							#img ce biti slika musice sa krilima na dole
+		elif self.img_count < self.ANIMATION_TIME*4:		#ako je img_count manji od 12
+			self.img = self.IMGS[1]							#img ce biti slika musice sa krilima vodoravno
+		elif self.img_count == self.ANIMATION_TIME*4 + 1:	#ako je img_count jednako 13
+			self.img = self.IMGS[0]							#img ce biti slika musice sa krilima na gore
+			self.img_count = 0								#i resetujemo brojac
+
+		#proveravamo da ne mase krilima kada pada
+		if self.tilt <= -80:								#ako je tilt manji od -80
+			self.img = self.IMGS[1]							#img ce biti slika musice sa vodoravnim krilima
+			self.img_count = self.ANIMATION_TIME*2 			#img_count je 6 da bi sledece bilo IMGS[2], da zamahne krilima kad skoci
+
+		#rotiranje slike oko centra svoje ose sa pygame (uz pomoc tilt parametra)
+		rotated_image = pygame.transform.rotate(self.img, self.tilt) 			#ovo rotira img za tilt oko gornje leve ivice img
+		new_rect = rotated_image.get_rect(center = self.img.get_rect(topleft = (self.x, self.y)).center) #ovo rotira sliku oko centralne ose, topleft postavi na center
+		win.blit(rotated_image, new_rect.topleft)								#na win iscrtavamo rotated_image sa pozicijom new_rect
+		#win.blit(rotated_image, (self.x, self.y))								#ovo je za rotiranje oko gornjeg levog ugla slike musice, ne izgleda lepo
+
+	#ova metoda nam pomaze da nadjemo kolizije izmedju objekata
+	def get_mask(self):
+		return pygame.mask.from_surface(self.img)			#metod vraca masku za img, posto slika ima transparentnu pozadinu gledamo koliziju maski nasih slika odnosno objekata umesto da gledamo uglove i stranice slika
+
+
+
+#kreiramo klasu za bazu
+class Base:
+	VEL = 4 											#ista brzina kao i za zabu da ne izgleda da se krecu ralicitom brzinom
+	WIDTH = BASE_IMG.get_width()						#belezimo kolika je sirina slike baze
+	IMG = BASE_IMG										#u IMG smestamo sliku baze
+
+	#konstruktor klase, kao parametar prosledili y koordinatu, x ce se kretati u levo pa ne moramo da definisemo poziciju za x
+	def __init__(self, y):
+		self.y = y										#postavili visinu baze
+		self.x1 = 0										#pocetna x koordinata baze, pogledati sliku koncept8
+		self.x2 = self.WIDTH 							#pocetna x koordinata druge baze je sirina prve baze
+
+	#metoda pomeranja baze, slika koncept7
+	def move(self):
+		self.x1 -= self.VEL 							#x1 i x2 ce se pomerati u levo za vrednost VEL svaki put kad se pozove metoda move
+		self.x2 -= self.VEL
+
+		if self.x1 + self.WIDTH < 0:					#ako je prva baza izasla skroz levo sa ekrana
+			self.x1 = self.x2 + self.WIDTH 				#onda je nova koordinata pocetka prve baze jednaka poziciji kraja druge baze
+
+		if self.x2 + self.WIDTH < 0:					#ako je druga baza izasla skroz levo sa ekrana
+			self.x2 = self.x1 + self.WIDTH 				#onda je nova koordinata pocetka druge baze jednaka poziciji kraja prve baze koja se nacrtala iza ove druge baze, slika koncept8
+
+	#metoda za crtanje baze na ekran (win)
+	def draw(self, win):
+		win.blit(self.IMG, (self.x1, self.y))			#crtanje IMG na win sa zadatim koordinatama (te koordinate u pygame predstavljaju topleft deo slike)
+		win.blit(self.IMG, (self.x2, self.y))			#crtamo dve baze odjednom 
+
+
+
+class Frog:
+	VEL = 4											#brzina kretanja zabe po elranu, ista kao i brzina kretanja baze da ne deluje da se krecu razlicitim brzinama
+	ANIMATION_TIME = 4								#koliko dugo se pokazuje pojedina slika po frejmu, ovo odredjuje brzinu skakanja zabe
+
+	def __init__(self):
+		self.img = FROG_IMG 						#u img stavili sliku zabe
+		self.x = 0 									#na pocetku, x koordinata zabe je 0
+		self.passed = False 						#promenljiva koja vodi racuna da li je musica prosla zabu
+		self.time = 0								#parametar koji ce nam pomoci da odredimo gde da nacrtamo zabu posto stalno skace
+		self.y = 0 									#na pocetku, y koordinata zabe je 0
+		self.set_pos()								#metoda odredjivanja koordinata
+		self.max_jump = random.choice(LIST5_Y)		#generisanje maksimalnog skoka za pojedinu zabu
+
+	def set_pos(self):
+		self.y = random.choice(LIST1_Y)				#za visinu biramo nasumicnu vrednost iz datog opsega...pogledati sliku koncept5
+		self.x = random.choice(LIST1_X)				#takodje i za duzinu na kojoj ce biti sledeca zaba
+		#sa random pozicijama, nije izazovno za algoritam
+		'''self.y = random.randint(370,420)
+		self.x = random.randint(450,600)'''
+
+	#metoda skakanja zabe
+	def jump(self):
+		#animiramo skakanje zabe
+		if self.time < self.ANIMATION_TIME:
+			self.y = self.y - self.max_jump
+		elif self.time < self.ANIMATION_TIME*2:
+			self.y = self.y - 7
+		elif self.time < self.ANIMATION_TIME*3:
+			self.y = self.y - 3
+		elif self.time < self.ANIMATION_TIME*4:
+			self.y = self.y - 1 
+		elif self.time < self.ANIMATION_TIME*5:
+			self.y = self.y + 3
+		elif self.time < self.ANIMATION_TIME*6:
+			self.y = self.y + 7
+		elif self.time < self.ANIMATION_TIME*7:
+			self.y = self.y + self.max_jump
+		elif self.time < self.ANIMATION_TIME*8:
+			self.y = self.y + 1
+			self.time = 0							#resetujemo ovaj parametar kad napravimo jedan ceo pun skok
+
+		if self.y > 420:							#ogranicavamo y osu zabe na 420
+			self.y = 420
+
+	#metoda kretanja zabe po ekranu,
+	def move(self):
+		self.x -= self.VEL 							#umanjujemo x osu
+		self.time += 1 								#uvecavamo vreme dok se krecemo po ekranu
+
+	#metoda crtanja zabe na ekran
+	def draw(self,win):
+		win.blit(self.img, (self.x, self.y))
+
+	#metoda za detekciju kolizije, slika koncept6
+	def collide(self, fly):
+		fly_mask = fly.get_mask() 							#maska za musicu
+		frog_mask = pygame.mask.from_surface(self.img)		#maska za zabu
+
+		offset = (self.x - fly.x, self.y - round(fly.y)) 	#koliko daleko su dva top left ugla udaljena, round da nemamo decimalnih brojeva
+
+		point = fly_mask.overlap(frog_mask, offset) 		#proveravamo da li se maske sudaraju; point of collision...point of collision izmedju fly_mask i frog_mask koristeci ofset...f-ja vraca None ako se ne sudaraju maske
+
+		if point: 											#provera da li ove tacke uopste postoje, ako nisu None onda
+			return True 									#znaci da smo se sudarili sa drugim objektom
+		return False
+
+
+
+class Wasp:
+	VEL = 4													#brzina kretanja ose
+	ANIMATION_TIME = 3										#varijabla koja nam pomaze za animiranje zujanja ose
+
+	def __init__(self):
+		self.x = 0
+		self.y = 0
+		self.img = WASP_IMG
+		self.passed = False 								#da li je osa prosla musicu
+		self.time = 0										#varijabla koja nam pomaze za animiranje zujanja ose
+		self.fy = 0											#final y
+		self.set_pos()										#postavljanje koordinata ose
+
+	def set_pos(self):
+		self.y = random.choice(LIST2_Y)						#za visinu biramo nasumicnu vrednost iz datog opsega...pogledati sliku koncept5
+		#self.y = self.y - round(self.img.get_height()/2)	#da bi y bio u sredini......ONDA TREBA JOS JEDNA PROMENLJIVA KOJA CE BITI HEIGHT NPR
+		self.fy = round(self.y + self.img.get_height()/2)
+		#mozda ova gornja linija koda treba da bude self.center_height = self.y - round(self.img.get_height()/2)
+		self.x = random.choice(LIST2_X)
+
+		#sa random pozicijama, nije izazovno za algoritam
+		'''self.y = random.randint(60, 300)
+		self.fy = round(self.y + self.img.get_height()/2)
+		self.x = 300'''
+		
+		'''self.c = random.choice(lista)		#podelili c na 4 dela kako bi se osa u skroz gorenjem delu ekrana pojavljivala cesce kako bi se algoritam brze zavrsio
+		if self.c == 0:
+			self.y = 59
+			self.fy = round(self.y + self.img.get_height()/2)		#ovo uradio da bi y od ose bio u sredini a ne u gornjem levom uglu...ovo uraditi i za ostale elif
+		elif self.c == 1:
+			self.y = random.randint(60,200)
+			self.fy = round(self.y + self.img.get_height()/2)
+		elif self.c == 2:
+			self.y = random.randint(201,260)
+			self.fy = round(self.y + self.img.get_height()/2)
+		elif self.c == 3:
+			self.y = 261
+			self.fy = round(self.y + self.img.get_height()/2)
+		self.x = 350'''
+
+	#kretanje ose po ekranu
+	def move(self, fly):
+		self.x -= self.VEL + 3								#umanjujemo x koordinatu, +3 da se krece malo brze od zaba i baze
+		self.time += 1										#uvecavamo vreme
+		
+		if self.time < self.ANIMATION_TIME:
+			self.y = self.y + 4
+		elif self.time < self.ANIMATION_TIME*2:
+			self.y = self.y + 5
+		elif self.time < self.ANIMATION_TIME*3:
+			self.y = self.y - 5
+		elif self.time < self.ANIMATION_TIME*4:
+			self.y = self.y - 4
+		elif self.time < self.ANIMATION_TIME*5:
+			self.y = self.y - 4
+		elif self.time < self.ANIMATION_TIME*6:
+			self.y = self.y - 5
+		elif self.time < self.ANIMATION_TIME*7:
+			self.y = self.y + 5
+		elif self.time == self.ANIMATION_TIME*8:
+			self.y = self.y + 4
+			self.time = 0									#resetujemo vreme kad osa napravi jednu punu oscilaciju da bi se postupak ponovio
+		
+
+		#ose ce da idu ka musici...bolje radi neat kad ose ne prate musicu, ima 100 musica a samo jedna osa pa nije dobro ovo, moralo bi da se trenira jedna musica samo
+		'''if fly.get_y() > self.y:
+			self.y += 2
+		elif fly.get_y() < self.y:
+			self.y -= 2'''
+
+	#metoda crtanja ose na ekran
+	def draw(self,win):
+		win.blit(self.img, (self.x, self.y))
+
+	#metoda pronalazenja kolizije izmedju musice i ose, slika koncept6
+	def collide(self, fly):
+		fly_mask = fly.get_mask() 								#maska za musicu
+		wasp_mask = pygame.mask.from_surface(self.img)			#maska za osu
+
+		offset = (self.x - fly.x, self.y - round(fly.y)) 		#koliko daleko su dva top left ugla udaljena, round da nemamo decimalnih brojeva
+
+		point = fly_mask.overlap(wasp_mask, offset) 			#proveravamo da li se maske sudaraju; point of collision...point of collision izmedju fly_mask i wasp_mask koristeci ofset...f-ja vraca None ako se ne sudaraju maske
+
+		if point: 												#provera da li ove tacke uopste postoje, ako nisu None onda
+			return True 										#znaci da smo se sudarili sa drugim objektom
+		return False
+
+#globalna funkcija za iscrtavanje na ekran, prosledjujemo joj ekran na kom se crta (win), musicu koju ce da crta...
+def draw_window(win, flys, base, score, frogs, wasps, gen):
+	win.blit(BG_IMG, (0,0)) 	#blit znaci iscrtaj, (0,0) je na topleft poziciji ekrana
+
+	for wasp in wasps:
+		wasp.draw(win)
+
+	text = STAT_FONT.render("Score: " + str(score), 1, (0,0,0)) 	#crne boje (0,0,0) font, bela boja (255,255,255)
+	win.blit(text, (WIN_WIDTH - text.get_width(), 0)) 				#iscrtaj text sa zadatim x i y koordinatama
+
+	text = STAT_FONT.render("Gen: " + str(gen), 1, (0,0,0)) 		#crne boje (0,0,0) font, bela boja (255,255,255)
+	win.blit(text, (0, 0)) 											#iscrtaj text sa zadatim x i y koordinatama
+
+	base.draw(win)													#iscrtava bazu (iscrtava preko mlatilica)
+
+	for frog in frogs:
+		frog.draw(win)
+	
+	for fly in flys:		#za svaku musicu
+		fly.draw(win) 		#prosledjujemo metodi win na kome ce da iscrta sve
+
+	pygame.display.update() #azurira ekran svaki put kad se ova metoda pozove
+
+
+
+#ova main funkcija ce da pokrece main petlju ove igre
+def main(genomes, config):			#dodali ove argumente u main jer neat zahteva da fitnes f-ja ima ova dva parametra, a koristicemo main f-ju kao fitnes f-ju
+	
+	global GEN 
+	GEN += 1	#uvecavamo brojac jer kad genom umre, ponovo se pokrece program i poziva fitness (main) f-ja
+
+	#moramo da vodimo racuna o svakoj neuralnoj mrezi koja kontrolise svaku pticu, genomes su neuralne mreze koje kontrolisu ptice, i moramo voditi racuna o pticama kojima neuralne mreze upravljaju (gde je pozicija na ekranu)
+	nets = []	#liste neuralnih mreza i genoma
+	ge = []		#pratimo genome da bi mogli da im promenimo fitnes na osnovu koliko su se pomerili
+	flys = []	#umesto jedne musice zelimo vise musica
+
+	for _, g in genomes:	#dodajemo _, jer genomes je uredjena kolekcija koja ima id genoma kao i objekat genoma (1, genome) a nas zanima samo objekat genoma pa je ovo nacin da se prodje for petlja bez da gledamo id genoma
+		net = neat.nn.FeedForwardNetwork.create(g, config)	#setup neuralne mreze za pojedini genom i setujemo objekat muve za tu mrezu i pratimo taj genom u listi, za svaki genom kreiramo neuralnu mrezu, setovanje neuralne mreze tako sto prosledimo genom i config
+		nets.append(net)							#dodajemo neuralnu mrezu u listu neuralnih mreza
+		flys.append(Fly(120,200))					#dodajemo muvu (genom) u listu musica
+		g.fitness = 0								#inicijalni fitnes scor, za pocetnu neuralnu mrezu/e
+		ge.append(g) 								#dodajemo genom u listu genoma
+
+	base = Base(WIN_HEIGHT - 60)	#kreirali objekat klase Base i dali mu visinu
+	frogs = [Frog()]				#u listu frogs je samo jedna zaba koja je kreirana na x=65, y=400
+	wasps = [Wasp()]
+
+	win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))		#kreirali objekat prozora gde ce biti igrica, ekran datih dimenzija na kom se igra
+	clock = pygame.time.Clock()		#koristi nam da podesimo brzinu frejmova (da musica ne bi odmah pala na zemlju) da bi mogli da usporimo brzinu petlje
+	score = 0						#pocetni rezultat je nula
+
+	run = True
+	while run:								#dok je run True, while petlja ce se vrteti
+		clock.tick(90)						#kad god pokrenemo petlju, uradice 30 frejmova svake sekunde
+		for event in pygame.event.get():	#kad god se nesto desi, npr. korisnik klikne misem
+			if event.type == pygame.QUIT:	#ako je taj dogadjaj da stisnemo crveni x za pygame window
+				run = False					#run postavi na False i izaci ce se iz while petlje
+				pygame.quit() #izlazi iz pygame
+				quit() #izlazi iz programa
+
+		wasp_ind = 0	#za proveravanje da muva obrati paznju na prvu osu na ekranu, posto ce biti vise osa na ekranu, index prve ose je 0
+		if len(flys) > 0: 	#ako ima muva u listi
+			if len(wasps) > 1 and flys[0].x > wasps[0].x + wasps[0].img.get_width():	#ako ima dve ose na ekranu i ako je x pozicija muve skroz prosla osu (nije bitno koja se muva koristi jer sve muve imaju istu x koordinatu pa je zato uvek muva[0])
+				wasp_ind = 1															#onda osa na koji treba muva da obrati paznju je sa indeksom 1, druga osa
+		else:	#ako nemamo vise muva, izlazimo iz igre
+			run = False
+			break
+		
+		frog_ind = 0	#za proveravanje da muva obrati paznju na prvu zabu na ekranu, posto ce biti vise zaba na ekranu, index prve zabe je 0
+		if len(flys) > 0: 	#ako ima muva u listi
+			if len(frogs) > 1 and flys[0].x > frogs[0].x + frogs[0].img.get_width():	#ako ima dve zabe na ekranu i ako je x pozicija muve skroz prosla zabu (nije bitno koja se muva koristi jer sve muve imaju istu x koordinatu pa je zato uvek muva[0])
+				frog_ind = 1															#onda zaba na koji treba muva da obrati paznju je sa indeksom 1, druga zaba
+		else:	#ako nemamo vise muva, izlazimo iz igre
+			run = False
+			break
+		
+
+		for x, fly in enumerate(flys):
+			fly.move()	#prosledimo vrednosti neuralnoj mrezi koja je vezana za pojedinu muvu kako bi dobili output, proverimo dal je output > 0.5 i ako jeste nek muva skoci
+			ge[x].fitness += 0.1	#ako je muva dosla do ovog frejma onda je podstaknemo da przivi, mali fitnes skor jer ova for petlja ce se izvrsavati 30 puta u sekundi/clock.tick(30)
+
+			#output = nets[x].activate((fly.y, abs(fly.y - wasps[wasp_ind].y), abs((wasps[wasp_ind].x + wasps[wasp_ind].img.get_width()) - fly.x), wasps[wasp_ind].y))	#moramo da aktiviramo neuralnu mrezu sa inputima
+			#output = nets[x].activate((fly.y,  wasps[wasp_ind].y))
+
+			#output = nets[x].activate((fly.y, wasps[wasp_ind].y, frogs[frog_ind].y, abs(fly.y - wasps[wasp_ind].y), abs((wasps[wasp_ind].x + wasps[wasp_ind].img.get_width()) - fly.x)))
+			#output = nets[x].activate((fly.y,  wasps[wasp_ind].y, frogs[frog_ind].y, wasps[wasp_ind].y - fly.y, frogs[frog_ind].y - fly.y, wasps[wasp_ind].x - fly.x))
+			#output = nets[x].activate((fly.y, abs(round(wasps[wasp_ind].y + wasps[wasp_ind].img.get_height()/2) - fly.y), (wasps[wasp_ind].x + wasps[wasp_ind].img.get_width()) - fly.x))
+			output = nets[x].activate((fly.y, abs(wasps[wasp_ind].fy - fly.y), round(wasps[wasp_ind].x + wasps[wasp_ind].img.get_width()/2) - fly.x))
+
+			#output drzi vrednost izlaza neuralne mreze, prosledimo inpute a to su visina ptice, razlika izmedju visine ptice i gornje i donje cevi
+			#pre sam uklonio jedan input koji je: abs(fly.y - frogs[frog_ind].y),
+			if output[0] > 0.5:	#output je lista stoga iako imamo jedan output neuron moramo da oznacimo indeks elementa u listi output, mozeomo imati vise outputa i vrednosti tih outputa se stavljaju u listu output
+				fly.jump()
+
+		'''for x, fly in enumerate(flys):
+			if fly.y > 100 and fly.y < 250:
+				ge[x].fitness += 0.25'''
+
+		#promenljiva pomocu koje pratimo da li treba da dodajemo jos zaba, lepkova i osa na ekran
+		add_frog = False 
+		add_wasp = False
+		#liste za brisanje zaba, osa
+		rem1 = []
+		rem2 = []
+
+
+		for wasp in wasps:									#za svaki lepak u listi lepkova uradi sledece
+			for x, fly in enumerate(flys):
+				if wasp.collide(fly):							#ako se desila kolizija izmedju lepka i musice
+					ge[x].fitness -= 1	#svaki put kad ptica udari u cev oduzece se 1 poen od fitnesa
+					flys.pop(x)		#izbacujemo pticu, neuralnu mrezu i genom koji su u vezi sa pticom koja je udarila cev
+					nets.pop(x)			#izbacujemo ih iz lista, brisemo clanove lista koji su na poziciji x
+					ge.pop(x)
+				if not wasp.passed and wasp.x < fly.x:			#ako lepak nije prosao i ako je x koordinata lepka manja od x koordinate musice
+					wasp.passed = True							#postavljanje atributa objekta na True, postavi da je lepak prosao musicu
+					add_wasp = True								#to znaci da treba da se doda novi lepak
+			if wasp.x + wasp.img.get_width() < 0:			#ako je lepak napustio ekran
+				rem2.append(wasp)							#dodali smo lepak koji je napustio ekran u listu za brisanje lepkova
+			wasp.move(fly)
+
+		if add_wasp:
+			score += 1										#ako smo prosli lepak (add_glue = True), rezultat se povecava za jedan
+			for g in ge:		#ovo smo dodali
+				g.fitness += 3	#svaki put kad ptica prodje osu, povecavamo joj fitnes skor, ohrabrujemo ih da prolaze ose a ne samo da racunaju koliko su presle
+			wasps.append(Wasp())		#sledeci lepak je na random x mestu
+
+		for r in rem2:
+			wasps.remove(r)
+
+
+		for frog in frogs:									#za svaku zabu u listi zaba uradi sledece
+			for x, fly in enumerate(flys):
+				if frog.collide(fly):							#ako se zaba sudari sa musicom, igra je gotova
+					ge[x].fitness -= 3	#svaki put kad ptica udari u cev oduzece se 1 poen od fitnesa
+					flys.pop(x)		#izbacujemo pticu, neuralnu mrezu i genom koji su u vezi sa pticom koja je udarila cev
+					nets.pop(x)			#izbacujemo ih iz lista, brisemo clanove lista koji su na poziciji x
+					ge.pop(x)
+				if not frog.passed and frog.x < fly.x:			#ako zaba nije prosla i ako je x koordinata zabe manja od x koordinate muve
+					frog.passed = True 							#postavi indikator na true
+					add_frog = True 							#to znaci da treba da se doda nova zaba na ekran
+			if frog.x + frog.img.get_width() < 0:			#ako je zaba izasla sa ekrana
+				rem1.append(frog)
+			frog.move()										#pomeraj zabu po ekranu
+			frog.jump()
+
+		if add_frog:										#ako treba da se doda nova zaba
+			score += 1										#povecaj rezultat jer smo prosli zabu
+			#for g in ge:		#ovo smo dodali
+				#g.fitness += 1	#svaki put kad ptica prodje cev, povecavamo joj fitnes skor, ohrabrujemo ih da prolaze kroz cevi a ne samo da racunaju koliko su presle
+			frogs.append(Frog())							#dodaj novu zabu u listu zaba
+
+		for r in rem1:										#brisanje zaba koje su napustile ekran
+			frogs.remove(r)
+
+
+		for x, fly in enumerate(flys):	#dodali ovu liniju koda za kad zelimo da imamo vise muva na ekranu, proveravamo za svaku muvu da li je udarila u zemlju
+			if fly.y + fly.img.get_height() >= (WIN_HEIGHT - 60) or fly.y < 0:#pre 60 i 0			#ako je muva udarila u zemlju, ako je njena y koordinata+visina slike > y zemlje
+				flys.pop(x)	#ako muva udari u zemlju, brisemo je iz liste
+				nets.pop(x)
+				ge.pop(x)
+
+		if score > 2000:	#ako smo postigli zeljeni fitnes (3000), izlazi iz petlje, smatramo da smo postigli zeljeni fitnes, posle taj zadnji genom mozemo sacuvati pomocu pickle modula
+			break		#izlazi iz while petlje, ne mora da se izvrse sve generacije ako smo postigli zeljeni fitness i skor u igrici
+
+		base.move()		#pomeraj bazu
+
+		draw_window(win, flys, base, score, frogs, wasps, GEN)	#pozivamo datu funkciju u while petlji
+
+
+#IMPLEMENTIRAJ DA SE SACUVA POBEDNICKI GENOM I DA NEURALNA MREZA MOZE DA UCI NA NJEMU
+
+#poziv main funkcije
+#main()
+
+
+#funkcija koja pravi novu populaciju na osnovu prethodne najbolje mreze
+def replay_genome(config_path, genome_path="winner.pkl"):
+    # Load requried NEAT config
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
+
+    # Unpickle saved winner
+    with open(genome_path, "rb") as f:
+        genome = pickle.load(f)
+
+    # Convert loaded genome into required data structure
+    genomes = [(1, genome)]
+
+    # Call game with only the loaded genome
+    main(genomes, config)
+    p = neat.Population(config)
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+    winner2 = p.run(main, 30)
+
+
+
+def run(config_path):	#funkcija
+	#'''	#UKLONITI # AKO ZELIMO DA POKRENEMO NOVU POPULACIJU NA OSNOVU PRETHODNOG NAJBOLJEG GENOMA
+	#load config fajl
+	config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)	#definisemo sve subheadings koje smo iskoristili za podesavanje parametara algoritma
+	#setovali smo putanju konfiguracionog fajla sa config_path
+	p = neat.Population(config) #kreiramo populaciju na osnovu konfiguracije koje smo namestili u config fajlu, setup populacije
+	#dodajemo stats reporters za nas program, statistika se prikazuje u konzoli, da bi mogli da vidimo sta se desava
+	p.add_reporter(neat.StdOutReporter(True))	#ovo nam daje statistiku za nasu p populaciju
+	stats = neat.StatisticsReporter()
+	p.add_reporter(stats)
+
+	winner = p.run(main, 500)#setovanje fitness funkcije koja ce da ide 100 generacija, nacin na koji odredjujemo fitnes ptice je koliko daleko se kretala u igrici, stoga main f-ja ce biti fitnes f-ja
+	#ovo ce pozvati main f-ju 100 puta i proslediti genome, moramo modifikovati  main funkciju sa dodatnim parametrima, kad kreiramo fitnes f-ju ona mora da ima genomes i config parametre, mozemo preimenovati main f-ju da se zove npr eval_genomes ili fitness, al ostavicemo main
+	#moramo modifikovati main f-ju kako bi mogla da evaluira svaki genom
+	
+	#IMPLEMENTIRAJ DA SE SACUVA POBEDNICKI GENOM
+	with open("winner.pkl", "wb") as f:
+		pickle.dump(winner, f)
+		f.close()
+
+	node_names = {-1:'fly.y_mid', -2:'abs(wasp.y_mid - fly.y_mid)', -3:'wasp.x_mid - fly.x', 0:'flap'}
+	visualize.draw_net(config, winner, view = True, node_names=node_names, show_disabled=True)
+	visualize.plot_stats(stats, ylog=False, view=True)
+	visualize.plot_species(stats, view=True)
+	#'''	#UKLONITI # AKO ZELIMO DA POKRENEMO NOVU POPULACIJU NA OSNOVU PRETHODNOG NAJBOLJEG GENOMA
+
+	#UCITAJ PRETHODNI POBEDNICKI GENOM
+	#replay_genome(config_path)  #, genome_path="winner.pkl"	#OTKOMENTARISATI AKO ZELIMO DA NAPRAVIMO POPULACIJU NA OSNOVU PRETHODNOG NAJBOLJEG GENOMA
+
+
+
+#load configuration file for neat
+if __name__ == "__main__":	#ovo NEAT modul preporucuje da se uradi da bi dobili put do konfiguracionog fajla
+	local_dir = os.path.dirname(__file__)	#ovo ce nam dati put do direktorijuma u kojem smo trenutno
+	config_path = os.path.join(local_dir, "config-feedforward.txt")	#pridruzujemo put lokalnog direktorijuma do config fajla, nalazi se putanja do config fajla
+	run(config_path)

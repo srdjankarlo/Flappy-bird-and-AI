@@ -1,0 +1,16 @@
+digraph {
+	node [fontsize=9 height=0.2 shape=circle width=0.2]
+	"fly.y_mid" [fillcolor=lightgray shape=box style=filled]
+	"abs(wasp.y_mid - fly.y_mid)" [fillcolor=lightgray shape=box style=filled]
+	"wasp.x_mid - fly.x" [fillcolor=lightgray shape=box style=filled]
+	flap [fillcolor=lightblue style=filled]
+	8754 [fillcolor=white style=filled]
+	9018 [fillcolor=white style=filled]
+	8973 [fillcolor=white style=filled]
+	"fly.y_mid" -> flap [color=green penwidth=0.7197215710130118 style=solid]
+	"wasp.x_mid - fly.x" -> flap [color=red penwidth=0.83566731204489 style=solid]
+	"abs(wasp.y_mid - fly.y_mid)" -> flap [color=red penwidth=0.5882589978754479 style=solid]
+	"wasp.x_mid - fly.x" -> 8754 [color=red penwidth=0.2131083833219502 style=dotted]
+	"abs(wasp.y_mid - fly.y_mid)" -> 8973 [color=red penwidth=0.16883672463082758 style=dotted]
+	"wasp.x_mid - fly.x" -> 9018 [color=red penwidth=0.3125034429537188 style=dotted]
+}

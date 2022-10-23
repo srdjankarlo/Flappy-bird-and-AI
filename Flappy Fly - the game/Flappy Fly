@@ -1,0 +1,563 @@
+import pygame			#importovanje modula pygame
+import neat				#importovanje modula neat za neuralnu mrezu
+import time				#importovanje modula time za clock.tick() f-ju u main-u u while petlji
+import os				#importovanje modula os za pronalazenje putanje
+import random			#importovanje modula random za nasumicno odredjivanje brojeva (visine na ekranu za objekte)
+import keyboard			#importovanje modula keyboard za rad sa tastaturom
+pygame.font.init()		#importovanje font modula iz modula pygame za font teksta na ekranu
+
+
+
+#dobra konvencija je da konstante pisemo velikim slovima
+WIN_WIDTH = 288			#sirina ekrana igrice
+WIN_HEIGHT = 512		#visina ekrana igrice
+
+#ucitavanje slika
+WASP_IMG = pygame.image.load(os.path.join("imgs", "wasp.png"))		#ucitali sliku ose
+FROG_IMG = pygame.image.load(os.path.join("imgs", "froggo.png"))	#ucitali sliku zabe
+FLY_IMGS = [pygame.image.load(os.path.join("imgs", "fly1.png")), pygame.image.load(os.path.join("imgs", "fly2.png")), pygame.image.load(os.path.join("imgs", "fly3.png"))]	#ucitali slike musice
+GLUE_IMG = pygame.image.load(os.path.join("imgs", "glue.png"))		#ucitali sliku lepka
+BASE_IMG = pygame.image.load(os.path.join("imgs", "base.png"))		#ucitali sliku baze
+BG_IMG = pygame.image.load(os.path.join("imgs", "bg.png"))			#ucitali sliku pozadine
+SHIELD_FLY = [pygame.image.load(os.path.join("imgs", "fly1s.png")), pygame.image.load(os.path.join("imgs", "fly2s.png")), pygame.image.load(os.path.join("imgs", "fly3s.png"))]		#ucitali slike musice sa stitom na sebi
+SHIELD = pygame.image.load(os.path.join("imgs", "shield.png"))		#ucitali slike stita
+
+STAT_FONT = pygame.font.SysFont("comicsans", 30)					#kreirali smo font comicsans sa velicinom 50
+
+#moguce pozicije za zabu
+LIST1_X = [350, 450, 650]	
+LIST1_Y = [370, 400, 420]
+#pozicije za osu
+LIST2_X = [300, 400, 500, 600]
+LIST2_Y	= [50, 100, 150]
+#pozicije za lepak
+LIST3_X = [600, 750, 850, 900]
+LIST3_Y = [150, 175, 200, 225, 250, 275, 310]
+#pozicije stita
+LIST4_X = [200, 500, 800, 1100]
+LIST4_Y = [70, 180, 230, 310]
+#moguce visine skoka zabe
+LIST5_Y = [9, 15, 20, 25]
+
+#kreiramo klasu za musicu
+class Fly:
+	IMGS = FLY_IMGS				#u IMGS smo stavili niz slika za musicu, za lakse referenciranje slika musice kasnije u kodu
+	MAX_ROTATION = 25			#ugao rotacije za musicu
+	ROT_VEL = 20				#brzina rotacije musice
+	ANIMATION_TIME = 3			#koliko dugo se prikazuje pojedina slika po frejmu, ovaj parametar podesava koliko ptica brzo mase krilima
+	IMGSS = SHIELD_FLY			#u IMGSS ucitali slike musice sa stitom
+
+	#konstruktor f-ja za klasu musice...ako ispred svake promenljive u f-ju stoji self to znaci da ce za svaki objekat biti drugacija vrednost tog parametra...ako nema self, svi objekti dele istu vrednost
+	def __init__(self, x, y):		#prima x i y pozicije musice a to su pocetne koordinate musice na ekranu: Fly(x,y)
+		self.x = x					#podesavanje x koordinate, self.iks = x
+		self.y = y					#podesavanje y koordinate, self.ipsilon = y
+		self.tilt = 0				#nagib slike musice, pocetni nagib kad se musica kreira je 0, slika je vodoravna
+		self.tick_count = 0			#promenljiva koja predstavlja vreme, koristice se u jednacini za odredjivanje pomeraja d (pomeraj je po y osi)
+		self.vel = 0				#brzina musice je na pocetku 0 jer ne pocne odmah da se krece (vel je brzina kretanja po y osi)
+		self.height = self.y		#promenljiva koja ce nam pomoci za pomeranje i nagib musice
+		self.img_count = 0			#promenljiva koja nam pomaze da odredimo koja se slika musice trenutno prikazuje na ekranu
+		self.img = self.IMGS[0]		#img je slika musice kad su joj krila postavljena na gore
+		self.shield_count = 0		#brojac za jacinu stita
+
+	#f-ja za mehaniku skakanja musice (pomeranje po y osi)
+	def jump(self):
+		self.vel = -5.5			#brzina skakanje (pomeraja) musice po y osi, u pygame modulu y osa raste na dole, pogleati sliku koncept2	
+		self.tick_count = 0		#kad skocimo, resetujemo tick_count jer moramo znati kad menjamo pravac
+		self.height = self.y	#promenljiva koja vodi racuna odakle je musica skocila, u height smestamo y poziciju sa koje smo skocili
+
+	#metodu move klase Fly pozivamo svaki put kada se musica pomera...ovo ce biti u while petlji u main-u...korisno je definisati kretanje u metodi klase nego u mainu za svaki objekat klase
+	def move(self):
+		self.tick_count += 1	#prosao je jedan frejm i uvecavamo vreme za 1, racunamo novu poziciju musice...imati na umu da se ovo resetuje svaki put kad musica skoci
+
+		d = self.vel*self.tick_count + 1.5*self.tick_count**2	#racunamo koliko se piksela pomeramo gore ili dole za trenutni frejm, pomeraj ptice
+		#za pocetak t=1, d=-5.5+1.5*1=-4...t=2, d=-5.5*2+1.5*4=-5...t=3, d=-5.5*3+1.5*9=-3...t=4, d=2...t=5, d=10...t=6, d=21...t=7, d=35.....minus idemo na gore a plus idemo na dole
+		
+		#ogranicavanje pomeraja padanja (broj piksela po frejmu)
+		if d >= 16:		#ako je pomeraj veci od 16 piksela
+			d = 16		#ogranici kretanje na dole (padanje) na 16 piksela po frejmu
+
+		#fino podesavanje skoka musice
+		if d < 0:		#ako smo skocili (pomeraj d je manji od nule sto znaci da se pomeramo na gore)
+			d -= 2		#skoci jos malo visine
+
+		self.y = self.y + d 	#menjamo y koordinatu na osnovu d pomeraja
+
+		#podesavanje nagiba musice
+		if d < 0 or self.y < self.height + 50:		#ako smo skocili ili ako smo iznad height+50
+			if self.tilt < self.MAX_ROTATION:		#ako je tilt manji od 25
+				self.tilt = self.MAX_ROTATION		#postavi tilt na 25
+		else:										#u suprotnom	(ako nismo skocili i ako smo ispod height+50)
+			if self.tilt > -90:						#ako je tilt veci od -90
+				self.tilt -= self.ROT_VEL			#umanji trenutni tilt za 20
+
+	#metoda draw klase Fly, crta objekat Fly na ekran/window, kao parametar prosledili win (ekran na kom se sve crta)
+	def draw(self, win):
+		self.img_count += 1		#svaki put kad se pozove f-ja draw, uvecava se ovaj parametar
+
+		#mahanje krila ptice
+		if self.shield_count == 0:
+			if self.img_count < self.ANIMATION_TIME:			#ako je img_count manji od 3
+				self.img = self.IMGS[0]							#img ce biti slika musice sa krilima na gore
+			elif self.img_count < self.ANIMATION_TIME*2:		#ako je img_count manji od 6
+				self.img = self.IMGS[1]							#img ce biti slika musice sa vodoravnim krilima
+			elif self.img_count < self.ANIMATION_TIME*3:		#ako je img_count manji od 9
+				self.img = self.IMGS[2]							#img ce biti slika musice sa krilima na dole
+			elif self.img_count < self.ANIMATION_TIME*4:		#ako je img_count manji od 12
+				self.img = self.IMGS[1]							#img ce biti slika musice sa krilima vodoravno
+			elif self.img_count == self.ANIMATION_TIME*4 + 1:	#ako je img_count jednako 13
+				self.img = self.IMGS[0]							#img ce biti slika musice sa krilima na gore
+				self.img_count = 0								#i resetujemo brojac
+		elif self.shield_count > 0:								#ako musica ima stit onda je crtaj sa stitom
+			if self.img_count < self.ANIMATION_TIME:			
+				self.img = self.IMGSS[0]							
+			elif self.img_count < self.ANIMATION_TIME*2:		
+				self.img = self.IMGSS[1]							
+			elif self.img_count < self.ANIMATION_TIME*3:		
+				self.img = self.IMGSS[2]							
+			elif self.img_count < self.ANIMATION_TIME*4:		
+				self.img = self.IMGSS[1]							
+			elif self.img_count == self.ANIMATION_TIME*4 + 1:	
+				self.img = self.IMGSS[0]							
+				self.img_count = 0
+
+		if self.shield_count == 0:							#ako nema stita
+			#proveravamo da ne mase krilima kada pada
+			if self.tilt <= -80:							#ako je tilt manji od -80
+				self.img = self.IMGS[1]						#img ce biti slika musice sa vodoravnim krilima
+				self.img_count = self.ANIMATION_TIME*2 		#img_count je 6 da bi sledece bilo IMGS[2], da zamahne krilima kad skoci
+		elif self.shield_count > 0:							#ako ima stita onda je crtaj sa stitom
+			if self.tilt <= -80:							
+				self.img = self.IMGSS[1]					
+				self.img_count = self.ANIMATION_TIME*2 		
+
+		#rotiranje slike oko centra svoje ose sa pygame (uz pomoc tilt parametra)
+		rotated_image = pygame.transform.rotate(self.img, self.tilt) #ovo rotira img za tilt oko gornje leve ivice img
+		new_rect = rotated_image.get_rect(center = self.img.get_rect(topleft = (self.x, self.y)).center) #ovo rotira sliku oko centralne ose, topleft postavi na center
+		win.blit(rotated_image, new_rect.topleft)		#na win iscrtavamo rotated_image sa pozicijom new_rect
+		#win.blit(rotated_image, (self.x, self.y))		#ovo je za rotiranje oko gornjeg levog ugla slike musice, ne izgleda lepo
+
+	#ova metoda nam pomaze da nadjemo kolizije izmedju objekata
+	def get_mask(self):
+		return pygame.mask.from_surface(self.img)	#metod vraca masku za img, posto slika ima transparentnu pozadinu gledamo koliziju maski nasih slika odnosno objekata umesto da gledamo uglove i stranice slika
+
+	def get_y(self):		#ova metoda vraca y poziciju musice
+		return self.y 		#koristicemo ovo da bi ose mogle da lete ka musici
+
+
+
+
+class Shield:
+	VEL = 4														#brzina kretanja stita na mapi, ista kao i za lepak i za zabe da ne izgleda da se krecu razlicitim brzinama
+
+	#konstruktor stita
+	def __init__(self):
+		self.x = 0												#pocetne koordinate stita
+		self.y = 0
+		self.set_pos()											#metoda klase za generisanje koordinata
+		self.img = SHIELD 										#u img ucitali sliku stita
+		self.passed = False 									#promenljiva koja nam pomaze da ocenimo da li je musica prosla stit a da ga nije pokupila
+
+	def set_pos(self):
+		self.x = random.choice(LIST4_X)							#postavljanje koordinata stita iz date liste sa mogucim koordinatama
+		self.y = random.choice(LIST4_Y)
+
+	#metoda kretanja stita po mapi
+	def move(self):
+		self.x -= self.VEL 										
+
+	#metoda crtanja objekta
+	def draw(self, win):
+		win.blit(self.img, (self.x, self.y))
+
+	#metoda za detekciju kolizije
+	def collide(self, fly):
+		fly_mask = fly.get_mask() 									#maska za musicu
+		mask = pygame.mask.from_surface(self.img)					#maska za stit
+
+		offset = (self.x - fly.x, self.y - round(fly.y)) 			#koliko daleko su dva top left ugla udaljena, round da nemamo decimalnih brojeva
+
+		#point ce biti koordinate ako ima overlap, ako nema overlap onda data f-je vracaju None
+		point = fly_mask.overlap(mask, offset)						#drugim recima, nalazi overlap izmedju fly_mask i druge date maske koristeci dati ofset
+
+		if point:			 										#provera da li ove tacke uopste postoje, ako nisu None onda
+			return True 											#znaci da smo se sudarili sa drugim objektom
+		return False 
+
+
+class Glue:
+	VEL = 4									#brzina kojom ce se kretati lepak po ekranu, musica se krece samo gore dole (po y osi) a ostali objekti se krecu po x osi
+
+	#konstruktor klase
+	def __init__(self):
+		self.y = 0							#postavljanje visine na nulu
+		self.x = 0 							#postavljanje x koordinate
+		self.GLUE = GLUE_IMG				#stavili sliku lepka u promenljivu GLUE
+		self.passed = False 				#da li je musica prosla ovaj lepak, bice korisno za koliziju i za AI
+		self.set_pos()						#metoda za konstruktor klase, definise gde je lepak i koliko je visok
+
+	#metoda podesavanja visine lepka
+	def set_pos(self):
+		self.y = random.choice(LIST3_Y)	- self.GLUE.get_height()			#za visinu biramo nasumicnu vrednost iz datog opsega...pogledati sliku koncept5
+		self.x = random.choice(LIST3_X)
+
+	#metoda pomeranja lepka
+	def move(self):
+		self.x -= self.VEL 		#lepak se pomera samo po x-osi brzinom VEL
+
+	#metoda iscrtavanja lepka na ekran, kao parametar ove metode prosledili smo ekran na kom se sve crta (win)
+	def draw(self, win):
+		win.blit(self.GLUE, (self.x, self.y))			#na win crtamo lepak sa zadatim koordinatama, na tim koordinatama ce biti gornji levi deo slike
+
+	#metoda za detekciju kolizije, kao parametar ovoj metodi prosledjujemo musicu
+	def collide(self, fly):
+		fly_mask = fly.get_mask() 										#maska za musicu
+		top_mask = pygame.mask.from_surface(self.GLUE)					#maska za lepak
+
+		top_offset = (self.x - fly.x, self.y - round(fly.y)) 			#koliko daleko su dva top left ugla udaljena, round da nemamo decimalnih brojeva
+
+		#point ce biti koordinate ako ima overlap, ako nema overlap onda data f-je vracaju None
+		point = fly_mask.overlap(top_mask, top_offset)					#drugim recima, nalazi overlap izmedju fly_mask i druge date maske koristeci dati ofset
+
+		if point:			 											#provera da li ove tacke uopste postoje, ako nisu None onda
+			return True 												#znaci da smo se sudarili sa drugim objektom
+		return False 													#inace vrati false
+
+
+
+#kreiramo klasu za bazu
+class Base:
+	VEL = 4 									#ista brzina kao i za lepak i zabe, da ne izgleda da se krecu razlicitom brzinom
+	WIDTH = BASE_IMG.get_width()				#belezimo kolika je sirina slike baze
+	IMG = BASE_IMG								#u IMG smestamo sliku baze
+
+	#konstruktor klase, kao parametar prosledili y koordinatu, x ce se kretati u levo pa ne moramo da definisemo poziciju za x
+	def __init__(self, y):
+		self.y = y								#postavili visinu baze
+		self.x1 = 0								#pocetna x koordinata baze, pogledati sliku koncept8
+		self.x2 = self.WIDTH 					#pocetna x koordinata druge baze je sirina prve baze
+
+	#metoda pomeranja baze
+	def move(self):
+		self.x1 -= self.VEL 					#x1 i x2 ce se pomerati u levo za vrednost VEL svaki put kad se pozove metoda move
+		self.x2 -= self.VEL
+
+		if self.x1 + self.WIDTH < 0:			#ako je prva baza izasla skroz levo sa ekrana
+			self.x1 = self.x2 + self.WIDTH 		#onda je nova koordinata pocetka prve baze jednaka poziciji kraja druge baze
+
+		if self.x2 + self.WIDTH < 0:			#ako je druga baza izasla skroz levo sa ekrana
+			self.x2 = self.x1 + self.WIDTH 		#onda je nova koordinata pocetka druge baze jednaka poziciji kraja prve baze
+
+	#metoda za crtanje baze na ekran (win)
+	def draw(self, win):
+		win.blit(self.IMG, (self.x1, self.y))	#crtanje IMG na win sa zadatim koordinatama (te koordinate u pygame predstavljaju topleft deo slike)
+		win.blit(self.IMG, (self.x2, self.y))
+
+
+
+class Frog:
+	VEL = 4						#brzina kretanja zabe po ekranu
+	ANIMATION_TIME = 4			#koliko dugo se pokazuje pojedina slika po frejmu, ovo odredjuje brzinu skakanja zabe
+
+	#konstruktor klase
+	def __init__(self):
+		self.img = FROG_IMG		#u img ucitali sliku zabe
+		self.x = 0 				#pocetna x koordinata zabe
+		self.passed = False 	#promenljiva koja vodi racuna da li je musica prosla zabu
+		self.time = 0 			#parametar koji ce nam pomoci da odredimo koja slika zabe da se pojavi na ekranu
+		self.y = 0				#pocetna y koordinata zabe
+		self.set_pos()			#metoda odredjivanja koordinata
+		self.max_jump = random.choice(LIST5_Y)	#generisanje maksimalnog skoka za pojedinu zabu
+
+	def set_pos(self):
+		self.y = random.choice(LIST1_Y)				#za visinu biramo nasumicnu vrednost iz datog opsega...pogledati sliku koncept5
+		self.x = random.choice(LIST1_X)					
+
+	def jump(self):
+		#animiramo skakanje zabe
+		if self.time < self.ANIMATION_TIME:
+			self.y = self.y - self.max_jump
+		elif self.time < self.ANIMATION_TIME*2:
+			self.y = self.y - 7
+		elif self.time < self.ANIMATION_TIME*3:
+			self.y = self.y - 3
+		elif self.time < self.ANIMATION_TIME*4:
+			self.y = self.y - 1 
+		elif self.time < self.ANIMATION_TIME*5:
+			self.y = self.y + 3
+		elif self.time < self.ANIMATION_TIME*6:
+			self.y = self.y + 7
+		elif self.time < self.ANIMATION_TIME*7:
+			self.y = self.y + self.max_jump
+		elif self.time < self.ANIMATION_TIME*8:
+			self.y = self.y + 1
+			self.time = 0 									#resetujemo ovaj parametar kad napravimo jedan ceo pun skok
+
+		if self.y > 420:		#ogranicavamo y osu zabe
+			self.y = 420
+
+	def move(self):
+		self.x -= self.VEL 									#metoda kretanja zabe po ekranu, umanjujemo x osu
+		self.time += 1 										#uvecavamo vreme dok se krecemo po ekranu
+
+	def draw(self,win):
+		win.blit(self.img, (self.x, self.y))
+
+	def collide(self, fly):
+		fly_mask = fly.get_mask() 							#maska za musicu
+		frog_mask = pygame.mask.from_surface(self.img)		#maska za zabu
+
+		offset = (self.x - fly.x, self.y - round(fly.y)) 	#koliko daleko su dva top left ugla udaljena, round da nemamo decimalnih brojeva
+
+		point = fly_mask.overlap(frog_mask, offset) 		#proveravamo da li se maske sudaraju; point of collision...point of collision izmedju fly_mask i frog_mask koristeci ofset...f-ja vraca None ako se ne sudaraju maske
+
+		if point: 											#provera da li ove tacke uopste postoje, ako nisu None onda
+			return True 									#znaci da smo se sudarili sa drugim objektom
+		return False
+
+
+
+class Wasp:
+	VEL = 4								#brzina kretanja ose
+	ANIMATION_TIME = 1					#varijabla koja nam pomaze za animiranje zujanja ose, koliko brzo osa zuji
+
+	def __init__(self):
+		self.x = 0						
+		self.y = 0
+		self.img = WASP_IMG
+		self.passed = False 			#da li je osa prosla musicu
+		self.time = 0					#varijabla koja nam pomaze za animiranje zujanja ose
+		self.set_pos()					#postavljanje koordinata ose
+
+	def set_pos(self):
+		self.y = random.choice(LIST2_Y)				#za visinu biramo nasumicnu vrednost iz datog opsega...pogledati sliku koncept5
+		self.x = random.choice(LIST2_X)
+
+	def move(self, fly):
+		self.x -= self.VEL + 2 						#kretanje ose po x osi
+
+		#animiranje zujanja ose
+		if self.time < self.ANIMATION_TIME:
+			self.y = self.y + 3
+		elif self.time < self.ANIMATION_TIME*2:
+			self.y = self.y + 4
+		elif self.time < self.ANIMATION_TIME*3:
+			self.y = self.y - 4
+		elif self.time < self.ANIMATION_TIME*4:
+			self.y = self.y - 3
+		elif self.time < self.ANIMATION_TIME*5:
+			self.y = self.y - 3
+		elif self.time < self.ANIMATION_TIME*6:
+			self.y = self.y - 4
+		elif self.time < self.ANIMATION_TIME*7:
+			self.y = self.y + 4
+		elif self.time == self.ANIMATION_TIME*8:
+			self.y = self.y + 3
+			self.time = 0
+
+		#ose ce da idu ka musici
+		if fly.get_y() < self.y:
+			self.y -= 2
+		elif fly.get_y() > self.y:
+			self.y += 2
+
+
+	def draw(self,win):
+		self.time += 1 								#prolazi vreme dok se osa krece
+		win.blit(self.img, (self.x, self.y))
+
+	def collide(self, fly):
+		fly_mask = fly.get_mask() 								#maska za musicu
+		wasp_mask = pygame.mask.from_surface(self.img)			#maska za osu
+
+		offset = (self.x - fly.x, self.y - round(fly.y)) 		#koliko daleko su dva top left ugla udaljena, round da nemamo decimalnih brojeva
+
+		point = fly_mask.overlap(wasp_mask, offset) 			#proveravamo da li se maske sudaraju; point of collision...point of collision izmedju fly_mask i wasp_mask koristeci ofset...f-ja vraca None ako se ne sudaraju maske
+
+		if point: 												#provera da li ove tacke uopste postoje, ako nisu None onda
+			return True 										#znaci da smo se sudarili sa drugim objektom
+		return False
+
+#globalna funkcija za iscrtavanje na ekran, prosledjujemo joj ekran na kom se crta (win), musicu koju ce da crta...
+def draw_window(win, fly, base, score, frogs, glues, wasps, shields, strength):
+	win.blit(BG_IMG, (0,0)) 	#blit znaci iscrtaj, (0,0) je na topleft poziciji ekrana
+
+	for shield in shields:
+		shield.draw(win)
+
+	for glue in glues:
+		glue.draw(win)
+
+	for wasp in wasps:
+		wasp.draw(win)
+
+	text = STAT_FONT.render("Score: " + str(score), 1, (0,0,0)) 	#crne boje (0,0,0) font, bela boja (255,255,255)
+	win.blit(text, (WIN_WIDTH - text.get_width(), 0)) 				#iscrtaj text sa zadatim x i y koordinatama
+
+	text = STAT_FONT.render("Strength: " + str(strength) + "%", 1, (0,0,0)) 	
+	win.blit(text, (0,0)) 				
+
+	base.draw(win)					#iscrtava bazu (iscrtava preko mlatilica)
+
+	for frog in frogs:
+		frog.draw(win)
+	
+	fly.draw(win) #prosledjujemo metodi win na kome ce da iscrta sve
+
+	pygame.display.update() #azurira ekran svaki put kad se ova metoda pozove
+
+
+
+#ova main funkcija ce da pokrece main petlju ove igre
+def main():
+	fly = Fly(90,200)				#kreiranje objekta klase Bird na poziciji (90,200)
+	base = Base(WIN_HEIGHT - 60)	#kreirali objekat klase Base i dali mu visinu
+
+	glues = [Glue()]			#u listi glues je samo jedan lepak koji je kreiran na random pozicijama sa random visinama
+	frogs = [Frog()]			#u listu frogs je samo jedna zaba koja je kreirana na x=65, y=400
+	wasps = [Wasp()]
+	shields = [Shield()]
+
+	win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))		#kreirali objekat prozora gde ce biti igrica, ekran datih dimenzija na kom se igra
+	clock = pygame.time.Clock()		#koristi nam da podesimo brzinu frejmova (da musica ne bi odmah pala na zemlju) da bi mogli da usporimo/ubrzamo brzinu petlje
+	score = 0						#pocetni rezultat je nula
+	gotovo = False 					#promenljiva pomocu koje se prikazuje da li zelimo opet da igramo ili ne
+	prvi_key_press = False 			#promenljiva nam pomaze da utvrdimo da li je neki taster pritisnut
+
+	run = True
+	while run:								#dok je run True, while petlja ce se vrteti
+		clock.tick(30)						#kad god pokrenemo petlju, uradice 30 frejmova svake sekunde
+		for event in pygame.event.get():	#kad god se nesto desi, npr. korisnik klikne misem
+			if event.type == pygame.QUIT:	#ako je taj dogadjaj da stisnemo crveni x za pygame window
+				run = False					#run postavi na False i izaci ce se iz while petlje
+		if prvi_key_press:					#ako se neki taster pritisne onda se ptica pomera
+			fly.move()						#pozivamo f-ju move svaki frejm da bi se ptica pomerala
+		if keyboard.is_pressed('u'):
+			prvi_key_press = True
+			fly.jump()
+
+		add_frog = False 					#promenljiva pomocu koje pratimo da li treba da dodajemo jos zaba na ekran
+		add_glue = False
+		add_wasp = False
+		add_shield = False
+		rem1 = []							#lista za brisanje zaba
+		rem2 = []
+		rem3 = []
+		rem4 = []							#lista za brisanje stitova
+
+		for shield in shields:
+			if shield.collide(fly):
+				fly.shield_count += 5
+				rem4.append(shield)
+				if add_shield == False:
+					add_shield = True
+			if shield.x + shield.img.get_width() < 0:
+				rem4.append(shield)
+				add_shield = True
+			if not shield.passed and shield.x < fly.x:
+				shield.passed = True
+			shield.move()
+		if add_shield:
+			shields.append(Shield())
+		for r in rem4:
+			shields.remove(r)
+
+
+		for wasp in wasps:									#za svaki lepak u listi lepkova uradi sledece
+			if wasp.collide(fly):							#ako se desila kolizija izmedju lepka i musice
+				if fly.shield_count > 0:
+					fly.shield_count -= 1
+				elif fly.shield_count == 0:
+					gotovo = True 								#igra je gotova
+					run = False
+			if wasp.x + wasp.img.get_width() < 0:			#ako je lepak napustio ekran
+				rem3.append(wasp)							#dodali smo lepak koji je napustio ekran u listu za brisanje lepkova
+			if not wasp.passed and wasp.x < fly.x:			#ako lepak nije prosao i ako je x koordinata lepka manja od x koordinate musice
+				wasp.passed = True							#postavljanje atributa objekta na True, postavi da je lepak prosao musicu
+				add_wasp = True								#to znaci da treba da se doda novi lepak
+			wasp.move(fly)
+		if add_wasp:
+			score += 1										#ako smo prosli lepak (add_glue = True), rezultat se povecava za jedan
+			wasps.append(Wasp())		#sledeci lepak je na random x mestu
+		for r in rem3:
+			wasps.remove(r)
+
+
+		for frog in frogs:									#za svaku zabu u listi zaba uradi sledece
+			if frog.collide(fly):							#ako se zaba sudari sa musicom, igra je gotova
+				if fly.shield_count > 0:
+					fly.shield_count -= 1
+				elif fly.shield_count == 0:
+					gotovo = True
+					run = False
+			if frog.x + frog.img.get_width() < 0:			#ako je zaba izasla sa ekrana
+				rem1.append(frog)							#dodaj tu zabu u listu zaba za brisanje
+			if not frog.passed and frog.x < fly.x:			#ako zaba nije prosla i ako je x koordinata zabe manja od x koordinate muve
+				frog.passed = True 							#postavi indikator na true
+				add_frog = True 							#to znaci da treba da se doda nova zaba na ekran
+			frog.move()										#pomeraj zabu po ekranu
+			frog.jump()
+		if add_frog:										#ako treba da se doda nova zaba
+			score += 1										#povecaj rezultat jer smo prosli zabu
+			frogs.append(Frog())							#dodaj novu zabu u listu zaba
+		for r in rem1:										#brisanje zaba koje su napustile ekran
+			frogs.remove(r)
+
+
+		for glue in glues:									#za svaki lepak u listi lepkova uradi sledece
+			if glue.collide(fly):							#ako se desila kolizija izmedju lepka i musice
+				if fly.shield_count > 0:
+					fly.shield_count -= 1
+				elif fly.shield_count == 0:
+					gotovo = True 								#igra je gotova
+					run = False
+			if glue.x + glue.GLUE.get_width() < 0:			#ako je lepak napustio ekran
+				rem2.append(glue)							#dodali smo lepak koji je napustio ekran u listu za brisanje lepkova
+			if not glue.passed and glue.x < fly.x:			#ako lepak nije prosao i ako je x koordinata lepka manja od x koordinate musice
+				glue.passed = True							#postavljanje atributa objekta na True, postavi da je lepak prosao musicu
+				add_glue = True								#to znaci da treba da se doda novi lepak
+			glue.move()
+		if add_glue:
+			score += 1										#ako smo prosli lepak (add_glue = True), rezultat se povecava za jedan
+			glues.append(Glue())		#i dodajemo u listu lepaka jos jedan lepak, sledeci lepak je na random x mestu
+		for r in rem2:
+			glues.remove(r)									#brise lepak iz liste lepkova za brisanje jer nam taj lepak vise ne treba, izasao je sa ekrana
+
+
+		if fly.y + fly.img.get_height() >= WIN_HEIGHT - 50:			#ako je muva udarila u zemlju, ako je njena y koordinata+visina slike > y zemlje
+			if fly.shield_count > 0:
+				fly.shield_count -= 1
+			elif fly.shield_count == 0:
+				gotovo = True 											#igra je gotova
+				run = False
+
+		base.move()		#pomeraj bazu
+
+		draw_window(win, fly, base, score, frogs, glues, wasps, shields, fly.shield_count)	#pozivamo datu funkciju u while petlji
+
+	while gotovo:
+		gameover = STAT_FONT.render("Restar? (y/n)!", 1, (255,255,255))		#tekst koji se prikazuje kad je ptica udarila od bazu ili mlatilicu
+		rect = gameover.get_rect()											#centriranje teksta na ekranu
+		rect.center = win.get_rect().center
+		win.blit(BG_IMG, (0,0))												#nacrtati samo pozadinu
+		win.blit(gameover, rect)											#onda dati tekst sa koordinatama u rect
+
+		rez = STAT_FONT.render("Score: " + str(score), 1, (0,0,0))			#ispis krajnjeg rezultata
+		win.blit(rez, (35, 200))											#nacrtaj tekst rez na zadatim koordinatama
+
+		pygame.display.update()												#azurira ekran svaki put kad se ova metoda pozove
+
+		for event in pygame.event.get(): 					#kad god se nesto desi, npr korisnik klikne misem
+			if event.type == pygame.QUIT: 					#ako pritisnemo crveni iks u gornjem desnom uglu
+				run = False 								#izlazi iz petlje...ovo stavili za svaki slucaj
+			elif event.type == pygame.KEYDOWN:				#ako je pritisnut neki taster
+				if event.key == pygame.K_y and gotovo:		#ako je taj taster y i gotovo=True
+					gotovo = False 							#postavi gotovo na False
+					main()									#pozovi main f-ju ispocetka
+				elif event.key == pygame.K_n and gotovo:	#ako je taj taster n i gotovo=True
+					gotovo = False 							#postavi gotova na False, izaci ce se iz ove while petlje
+					run = False 							#uci ce se u prvu while petlju i run ce je istog trena zavrsiti jer je run=False
+
+
+
+#poziv main funkcije
+main()

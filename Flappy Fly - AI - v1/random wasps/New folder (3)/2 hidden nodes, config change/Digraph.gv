@@ -1,0 +1,10 @@
+digraph {
+	node [fontsize=9 height=0.2 shape=circle width=0.2]
+	"fly.y_mid" [fillcolor=lightgray shape=box style=filled]
+	"abs(wasp.y_mid - fly.y_mid)" [fillcolor=lightgray shape=box style=filled]
+	"wasp.x_mid - fly.x" [fillcolor=lightgray shape=box style=filled]
+	flap [fillcolor=lightblue style=filled]
+	"fly.y_mid" -> flap [color=red penwidth=0.2406076758250377 style=dotted]
+	"abs(wasp.y_mid - fly.y_mid)" -> flap [color=green penwidth=0.8258543519605807 style=solid]
+	"wasp.x_mid - fly.x" -> flap [color=red penwidth=0.7416776668057047 style=solid]
+}
